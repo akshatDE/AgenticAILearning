@@ -1,0 +1,1 @@
+#This repo contains the code and resources for the Agentic AI Learning project. It has projects that help in learning and understanding the concepts of Agentic AI. Using Simple python to LangChain Framework.
