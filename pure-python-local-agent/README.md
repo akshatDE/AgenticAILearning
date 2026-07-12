@@ -15,6 +15,10 @@ The agent can:
 
 ---
 
+## Arch Daigram
+![python_agent_arch](python_agent_arch.png)
+
+---
 ## Agent Workflow
 
 ```text
