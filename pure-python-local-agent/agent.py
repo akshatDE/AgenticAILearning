@@ -74,3 +74,16 @@ def convert_currency_tool(amount: float, from_currency: str, to_currency: str) -
         return f"Currency service unavailable: {exc}"
     except KeyError:
         return f"No rate available for {from_currency} -> {to_currency}"
+
+def calculate_tool(expression: str) -> str:
+    """Evaluate a mathematical expression and return the result.
+
+    Safely evaluate the provided mathematical expression using Python's
+    eval function. If the evaluation fails, an error message is returned
+    instead.
+    """
+    try:
+        result = eval(expression)
+        return str(result)
+    except Exception as e:
+        return f"Error evaluating expression: {e}"
