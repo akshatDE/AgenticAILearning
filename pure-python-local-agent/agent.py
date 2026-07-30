@@ -55,3 +55,22 @@ def get_weather_tool(location: str) -> dict:
         }
     except Exception as e:
         return {response.status_code: "Failed to get weather data"}
+
+def convert_currency_tool(amount: float, from_currency: str, to_currency: str) -> str:
+    """Live conversion via the Frankfurter API (free, no key required).
+    A real network call, unlike the other two tools -- worth pointing out
+    that tools can mix live data and static data freely.
+    """
+    try:
+        response = requests.get(
+            "https://api.frankfurter.dev/v1/latest",
+            params={"base": from_currency.upper(), "symbols": to_currency.upper()},
+            timeout=10,
+        )
+        response.raise_for_status()
+        rate = response.json()["rates"][to_currency.upper()]
+        return str(round(amount * rate, 2))
+    except requests.exceptions.RequestException as exc:
+        return f"Currency service unavailable: {exc}"
+    except KeyError:
+        return f"No rate available for {from_currency} -> {to_currency}"
