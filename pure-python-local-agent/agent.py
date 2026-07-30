@@ -1,4 +1,5 @@
 import requests
+import os
 
 
 def ask_ai(message: str, model: str = "qwen3.5:9b") -> str:
@@ -30,3 +31,27 @@ def ask_ai(message: str, model: str = "qwen3.5:9b") -> str:
 
     except requests.RequestException as exc:
         return f"An error occurred: {exc}"
+
+def get_weather_tool(location: str) -> dict:
+    """Fetch the current weather for a location.
+
+    Query the WeatherAPI for the specified location and return the
+    current weather condition and temperature in Celsius. If the
+    request fails, an error message is returned instead.
+
+    """
+    weather_api_key = os.getenv("WEATHER_API_KEY")
+    base_url = "http://api.weatherapi.com/v1"
+    response = requests.get(f"{base_url}/current.json?key={weather_api_key}&q={location}")
+    try:
+        data = response.json()
+        location_name = data['location']['name']
+        weather_condition = data['current']['condition']['text']
+        temperature_celsius = data['current']['temp_c']
+        return {
+            "location": location_name,
+            "condition": weather_condition,
+            "temperature_celsius": temperature_celsius
+        }
+    except Exception as e:
+        return {response.status_code: "Failed to get weather data"}
