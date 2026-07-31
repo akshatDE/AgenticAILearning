@@ -6,16 +6,36 @@ during the run and surface it in the UI as an expandable "agent trace".
 """
 
 import io
+import os
 import time
 from contextlib import redirect_stdout
 
 import requests
 import streamlit as st
 
+import agent as agent_core
 from agent import run_agent
 
 OLLAMA_URL = "http://localhost:11434"
-MODEL_NAME = "qwen3.5:9b"
+GROQ_URL = "https://api.groq.com/openai/v1"
+
+# run_agent internally calls agent_core.ask_groq; keep a handle on the original
+# so the UI can swap backends at runtime without touching agent.py
+if not hasattr(agent_core, "_original_ask_groq"):
+    agent_core._original_ask_groq = agent_core.ask_groq
+
+BACKENDS = {
+    "Groq (cloud)": {
+        "icon": "⚡",
+        "model": "openai/gpt-oss-120b",
+        "fn": agent_core._original_ask_groq,
+    },
+    "Ollama (local)": {
+        "icon": "🦙",
+        "model": "qwen3.5:9b",
+        "fn": agent_core.ask_ai,
+    },
+}
 
 st.set_page_config(
     page_title="AgenticGPT",
@@ -201,6 +221,8 @@ st.markdown(
             <span style="display:inline-flex;align-items:center;gap:.5rem;">
                 {QWEN_MARK.format(s=34, i="wm")} Qwen
             </span>
+            <span class="x">×</span>
+            <span>⚡ Groq</span>
         </div>
     </div>
     """,
@@ -231,6 +253,23 @@ def ollama_status() -> tuple[bool, list[str]]:
         return True, models
     except requests.RequestException:
         return False, []
+
+
+@st.cache_data(ttl=30)
+def groq_status() -> bool:
+    """Return True when the GROQ_API_KEY works against the Groq API."""
+    key = os.environ.get("GROQ_API_KEY")
+    if not key:
+        return False
+    try:
+        resp = requests.get(
+            f"{GROQ_URL}/models",
+            headers={"Authorization": f"Bearer {key}"},
+            timeout=3,
+        )
+        return resp.status_code == 200
+    except requests.RequestException:
+        return False
 
 
 def run_agent_with_trace(prompt: str) -> tuple[str, str, float]:
@@ -274,6 +313,7 @@ with st.sidebar:
             <span class="powered-badge">🦙 Ollama</span>
             <span class="powered-badge">{QWEN_MARK.format(s=14, i="sb")}
                 <span class="qwen-text">Qwen</span></span>
+            <span class="powered-badge">⚡ Groq</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -285,22 +325,38 @@ with st.sidebar:
 
     st.divider()
 
-    online, models = ollama_status()
-    if online:
-        st.markdown(
-            '<span class="status-pill"><span class="dot ok"></span>Ollama online</span>',
-            unsafe_allow_html=True,
-        )
-        if MODEL_NAME not in models:
-            st.warning(f"Model `{MODEL_NAME}` not found. Run `ollama pull {MODEL_NAME}`.")
-    else:
-        st.markdown(
-            '<span class="status-pill"><span class="dot bad"></span>Ollama offline</span>',
-            unsafe_allow_html=True,
-        )
-        st.error("Start Ollama first: `ollama serve`")
+    st.markdown("**Backend**")
+    backend_name = st.radio(
+        "Backend",
+        list(BACKENDS.keys()),
+        label_visibility="collapsed",
+    )
+    backend = BACKENDS[backend_name]
+    # reroute run_agent's ask_groq to the chosen backend (agent.py untouched)
+    agent_core.ask_groq = backend["fn"]
 
-    st.caption(f"Model: `{MODEL_NAME}`")
+    ollama_ok, ollama_models = ollama_status()
+    groq_ok = groq_status()
+    st.markdown(
+        f"""
+        <span class="status-pill"><span class="dot {'ok' if ollama_ok else 'bad'}"></span>
+            🦙 Ollama {'online' if ollama_ok else 'offline'}</span>
+        <span class="status-pill"><span class="dot {'ok' if groq_ok else 'bad'}"></span>
+            ⚡ Groq {'connected' if groq_ok else 'unavailable'}</span>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if backend_name == "Ollama (local)":
+        if not ollama_ok:
+            st.error("Start Ollama first: `ollama serve`")
+        elif backend["model"] not in ollama_models:
+            st.warning(f"Model `{backend['model']}` not found. "
+                       f"Run `ollama pull {backend['model']}`.")
+    elif not groq_ok:
+        st.error("Groq key missing or invalid — check `GROQ_API_KEY` in `.env`.")
+
+    st.caption(f"Active: {backend['icon']} `{backend['model']}`")
 
     st.divider()
     st.markdown("**Tools**")
@@ -320,10 +376,10 @@ if not st.session_state.chat:
     st.markdown(
         f"""
         <div class="powered-row">
-            <span class="powered-badge">🦙 Ollama</span>
-            <span style="color:#7a7a7a;">×</span>
-            <span class="powered-badge">{QWEN_MARK.format(s=16, i="pb")}
+            <span class="powered-badge"{' style="border-color:#10a37f;"' if backend_name == "Ollama (local)" else ''}>🦙 Ollama · {QWEN_MARK.format(s=16, i="pb")}
                 <span class="qwen-text">Qwen&nbsp;3.5</span></span>
+            <span style="color:#7a7a7a;">×</span>
+            <span class="powered-badge"{' style="border-color:#10a37f;"' if backend_name == "Groq (cloud)" else ''}>⚡ Groq · GPT-OSS&nbsp;120B</span>
         </div>
         """,
         unsafe_allow_html=True,

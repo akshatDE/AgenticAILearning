@@ -1,8 +1,12 @@
+import json
 from pprint import pprint
 from urllib import response
 from tools import get_weather, calculator, convert_currency, TOOL_SCHEMAS, TOOLS_BY_NAME
 import requests
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def ask_ai(message: list, model: str = "qwen3.5:9b") -> str:
@@ -32,7 +36,7 @@ def ask_ai(message: list, model: str = "qwen3.5:9b") -> str:
         return f"An error occurred: {exc}"
 
 
-def connect_groq(message: list, model: str = "openai/gpt-oss-120b") -> str:
+def ask_groq(message: list, model: str = "openai/gpt-oss-120b") -> str:
     """Send a prompt to the Groq cloud API and return its response.
 
     Submit the user's message to the Groq chat completions API and return
@@ -100,7 +104,7 @@ def run_agent(user_message: str, max_turns: int = 10) -> str:
 
         for turn in range(max_turns):
 
-            response = ask_ai(messages)
+            response = ask_groq(messages)
             messages.append(response)
             print(f"\nAI response — turn {turn + 1}:")
 
@@ -113,6 +117,11 @@ def run_agent(user_message: str, max_turns: int = 10) -> str:
 
                 tool_name = tool_call["function"]["name"]
                 arguments = tool_call["function"]["arguments"]
+
+                if isinstance(arguments, str):
+
+                    arguments = json.loads(arguments)
+
                 tool_function = TOOLS_BY_NAME.get(tool_name)
 
                 if tool_function is None:
@@ -139,7 +148,7 @@ def run_agent(user_message: str, max_turns: int = 10) -> str:
 
                         "role": "tool",
 
-                        "tool_name": tool_name,
+                        "tool_call_id": tool_call.get("id", tool_name),
 
                         "content": str(result),
 
