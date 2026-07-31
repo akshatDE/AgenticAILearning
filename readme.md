@@ -19,3 +19,5 @@ The projects in this repository focus on concepts such as:
 - Multi-agent systems
 
 The idea is to learn the fundamentals first, understand what happens behind the abstractions, and then use frameworks to build more advanced Agentic AI applications.
+
+![Agentic AI Learning Journey](image.png)
