@@ -1,8 +1,8 @@
 import os
+from urllib import response
 import requests
 
-
-def get_weather_tool(location: str) -> dict:
+def get_weather(city: str) -> dict:
     """Fetch the current weather for a location.
 
     Query the WeatherAPI for the specified location and return the
@@ -10,10 +10,11 @@ def get_weather_tool(location: str) -> dict:
     request fails, an error message is returned instead.
 
     """
-    weather_api_key = os.getenv("WEATHER_API_KEY")
-    base_url = "http://api.weatherapi.com/v1"
-    response = requests.get(f"{base_url}/current.json?key={weather_api_key}&q={location}")
     try:
+        
+        weather_api_key = os.getenv("WEATHER_API_KEY")
+        base_url = "http://api.weatherapi.com/v1"
+        response = requests.get(f"{base_url}/current.json?key={weather_api_key}&q={city}")
         data = response.json()
         location_name = data['location']['name']
         weather_condition = data['current']['condition']['text']
@@ -26,7 +27,7 @@ def get_weather_tool(location: str) -> dict:
     except Exception as e:
         return {response.status_code: "Failed to get weather data"}
 
-def convert_currency_tool(amount: float, from_currency: str, to_currency: str) -> str:
+def convert_currency(amount: float, from_currency: str, to_currency: str) -> str:
     """Live conversion via the Frankfurter API (free, no key required).
     A real network call, unlike the other two tools -- worth pointing out
     that tools can mix live data and static data freely.
@@ -45,7 +46,7 @@ def convert_currency_tool(amount: float, from_currency: str, to_currency: str) -
     except KeyError:
         return f"No rate available for {from_currency} -> {to_currency}"
 
-def calculate_tool(expression: str) -> str:
+def calculator(expression: str) -> str:
     """Evaluate a mathematical expression and return the result.
 
     Safely evaluate the provided mathematical expression using Python's
@@ -57,3 +58,52 @@ def calculate_tool(expression: str) -> str:
         return str(result)
     except Exception as e:
         return f"Error evaluating expression: {e}"
+
+TOOL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a city.",
+            "parameters": {
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+                "required": ["city"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calculator",
+            "description": "Evaluate a basic arithmetic expression.",
+            "parameters": {
+                "type": "object",
+                "properties": {"expression": {"type": "string"}},
+                "required": ["expression"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "convert_currency",
+            "description": "Convert an amount from one currency to another using live rates.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "amount": {"type": "number"},
+                    "from_currency": {"type": "string", "description": "3-letter code, e.g. USD"},
+                    "to_currency": {"type": "string", "description": "3-letter code, e.g. INR"},
+                },
+                "required": ["amount", "from_currency", "to_currency"],
+            },
+        },
+    },
+]
+
+TOOLS_BY_NAME={
+    "get_weather": get_weather,
+    "calculator": calculator,
+    "convert_currency": convert_currency,
+}
