@@ -32,6 +32,37 @@ def ask_ai(message: list, model: str = "qwen3.5:9b") -> str:
         return f"An error occurred: {exc}"
 
 
+def connect_groq(message: list, model: str = "openai/gpt-oss-120b") -> str:
+    """Send a prompt to the Groq cloud API and return its response.
+
+    Submit the user's message to the Groq chat completions API and return
+    the generated response. The API key is read from the GROQ_API_KEY
+    environment variable. If the request fails, an error message is
+    returned instead.
+    """
+    try:
+        url = "https://api.groq.com/openai/v1/chat/completions"
+
+        headers = {
+            "Authorization": f"Bearer {os.environ.get('GROQ_API_KEY')}",
+        }
+
+        payload = {
+            "model": model,
+            "messages": message,
+            "tools": TOOL_SCHEMAS,
+            "stream": False,
+        }
+
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+
+        return response.json()["choices"][0]["message"]
+
+    except requests.RequestException as exc:
+        return f"An error occurred: {exc}"
+
+
 def run_agent(user_message: str, max_turns: int = 10) -> str:
 
     """
