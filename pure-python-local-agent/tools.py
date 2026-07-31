@@ -12,9 +12,8 @@ def get_weather(city: str) -> dict:
     """
     try:
         
-        weather_api_key = os.getenv("WEATHER_API_KEY")
         base_url = "http://api.weatherapi.com/v1"
-        response = requests.get(f"{base_url}/current.json?key={weather_api_key}&q={city}")
+        response = requests.get(f"{base_url}/current.json?key=e3897ae36fa745dd94c34330263007&q={city}")
         data = response.json()
         location_name = data['location']['name']
         weather_condition = data['current']['condition']['text']

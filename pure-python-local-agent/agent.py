@@ -1,7 +1,6 @@
 from pprint import pprint
 from urllib import response
-
-from tools import get_weather, calculator, convert_currency, TOOL_SCHEMAS
+from tools import get_weather, calculator, convert_currency, TOOL_SCHEMAS, TOOLS_BY_NAME
 import requests
 import os
 
@@ -40,9 +39,7 @@ def run_agent(user_message: str, max_turns: int = 10) -> str:
     Execute the complete agent workflow.
 
     The agent sends the user's query to the LLM, executes any requested tools,
-
     feeds the tool results back to the model, and repeats until a final answer
-
     is produced or the maximum number of turns is reached.
 
     Args:
@@ -122,3 +119,10 @@ def run_agent(user_message: str, max_turns: int = 10) -> str:
         return "Agent stopped because it reached the maximum number of turns."
     except Exception as e:
         return f"An error occurred during agent execution: {e}"
+
+if __name__ == "__main__":
+    user_input = input("Enter your query: ")
+    final_response = run_agent(user_input)
+    print("\nFinal AI Response:")
+    pprint(final_response)
+
