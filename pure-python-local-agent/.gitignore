@@ -13,7 +13,7 @@ wheels/
 test/
 
 .claude/
-.streamlit/
+.streamlit/secrets.toml
 .agents/
 .env
 

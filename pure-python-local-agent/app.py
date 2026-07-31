@@ -13,6 +13,14 @@ from contextlib import redirect_stdout
 import requests
 import streamlit as st
 
+# on Streamlit Cloud there is no .env, so take the key from st.secrets and put
+# it in the environment before agent.py reads it
+try:
+    if "GROQ_API_KEY" in st.secrets and not os.environ.get("GROQ_API_KEY"):
+        os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
+except Exception:
+    pass
+
 import agent as agent_core
 from agent import run_agent
 
