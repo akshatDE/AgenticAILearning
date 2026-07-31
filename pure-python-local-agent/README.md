@@ -1,30 +1,40 @@
-# Pure Python Agentic AI
+# AgenticGPT — Pure Python Agentic AI
 
-A simple Agentic AI project built using **pure Python**, without frameworks such as LangChain, LangGraph, CrewAI, or AutoGen.
+A working AI agent built in **pure Python**, without LangChain, LangGraph, CrewAI, or AutoGen.
 
-The goal of this project is to understand how an AI agent works internally before using agent frameworks.
+The goal of this project is to understand how an AI agent works internally before using agent frameworks. Everything an agent framework hides — the tool schemas, the message list, the loop that decides when to stop — is written out here in plain Python.
 
-The agent can:
+### 🔗 Live Demo
 
-- Understand a user request
-- Decide whether a tool is required
-- Select and call the correct Python function
-- Read the tool result
-- Continue calling tools when needed
-- Return a final answer
+**[Try AgenticGPT →](https://akshatde-agenticailearning-pure-python-local-agentapp-qgqnq1.streamlit.app/)**
+
+The hosted version runs on **Groq**, since a local model cannot run on Streamlit Cloud. Run it on your own machine to use **Ollama + Qwen** instead.
 
 ---
 
-## Arch Daigram
+## What the Agent Does
+
+- Understands a user request
+- Decides whether a tool is required
+- Selects and calls the correct Python function
+- Reads the tool result
+- Continues calling tools when needed
+- Returns a final answer
+
+---
+
+## Arch Diagram
+
 ![python_agent_arch](python_agent_arch.png)
 
 ---
+
 ## Agent Workflow
 
 ```text
 User Question
      ↓
-Local LLM receives available tool schemas
+LLM receives available tool schemas
      ↓
 LLM selects a tool and generates its arguments
      ↓
@@ -41,120 +51,115 @@ The main agent cycle is:
 Choose → Execute → Observe → Repeat
 ```
 
+The loop runs up to `max_turns` (default 10) and stops as soon as the model replies without requesting a tool.
+
 ---
 
-## Local Model
+## Two Model Backends
 
-The project will use **Qwen3.5 9B**, running locally on my Mac.
+The same agent loop runs against either backend, and the Streamlit sidebar switches between them at runtime.
 
-The model can be served through a local OpenAI-compatible endpoint using tools such as Ollama.
+| Backend | Model | Where it runs | Speed |
+|---|---|---|---|
+| 🦙 **Ollama** | `qwen3.5:9b` | Your machine, fully offline | ~5–10s |
+| ⚡ **Groq** | `openai/gpt-oss-120b` | Groq cloud API | under 1s |
 
-Example configuration:
+Ollama keeps conversations and tool results entirely on your machine. Groq is there because a 9B model cannot be hosted on free infrastructure, which is what makes the live demo possible.
 
-```python
-from openai import OpenAI
-
-client = OpenAI(
-    api_key="ollama",
-    base_url="http://localhost:11434/v1",
-)
-
-model = "qwen3.5:9b"
-```
-
-This keeps the project local and avoids sending conversations or tool results to an external LLM provider.
+Both are plain `requests` calls — `ask_ai()` for Ollama and `ask_groq()` for Groq. No SDK involved.
 
 ---
 
 ## Available Tools
 
-The Streamlit version currently includes:
-
 | Tool | Purpose |
 |---|---|
-| `get_weather` | Returns sample weather data |
-| `calculator` | Evaluates basic arithmetic |
-| `convert_currency` | Converts currencies using a live API |
+| `get_weather` | Current weather for a city (WeatherAPI) |
+| `calculator` | Evaluates an arithmetic expression |
+| `convert_currency` | Live exchange rates (Frankfurter API) |
 
-Tools are regular Python functions.
+Tools are ordinary Python functions:
 
 ```python
-def get_weather(city: str) -> str:
-    data = SAMPLE_WEATHER.get(city.lower())
-
-    if data is None:
-        return f"No weather data for {city!r}."
-
-    return f"{city.title()}: {data['celsius']}C, {data['conditions']}"
+def convert_currency(amount: float, from_currency: str, to_currency: str) -> str:
+    response = requests.get(
+        "https://api.frankfurter.dev/v1/latest",
+        params={"base": from_currency.upper(), "symbols": to_currency.upper()},
+        timeout=10,
+    )
+    rate = response.json()["rates"][to_currency.upper()]
+    return str(round(amount * rate, 2))
 ```
 
-Each function also has a JSON schema that tells the model:
-
-- Tool name
-- Tool purpose
-- Required arguments
-- Argument data types
+Each function also has a JSON schema that tells the model its name, purpose, required arguments, and argument types. `TOOLS_BY_NAME` maps the name the model returns back to the real Python function.
 
 ---
 
 ## Project Structure
 
 ```text
-pure-python-agent/
+pure-python-local-agent/
 │
-├── agent.py
-├── streamlit_app.py
-├── tools.py
-├── .env
-├── pyproject.toml
+├── agent.py           # agent loop + both model backends
+├── tools.py           # tool functions, schemas, registry
+├── app.py             # AgenticGPT Streamlit interface
+├── requirements.txt
 └── README.md
 ```
 
 ### `agent.py`
 
-Contains the core agent loop and terminal chat interface.
-
-### `streamlit_app.py`
-
-Provides the Streamlit chat interface and stores conversation history using `st.session_state`.
+`ask_ai()` calls Ollama, `ask_groq()` calls Groq, and `run_agent()` holds the loop: send messages, execute any requested tools, append results, repeat.
 
 ### `tools.py`
 
-Contains the Python tool functions, tool schemas, and tool registry.
+The tool functions, their JSON schemas, and the name → function registry.
+
+### `app.py`
+
+The Streamlit chat interface. Keeps history in `st.session_state`, captures the agent's printed trace, and shows it under each answer so you can see exactly which tools ran.
 
 ---
 
 ## Installation
 
 ```bash
-git clone https://github.com/your-username/pure-python-agent.git
-cd pure-python-agent
+git clone https://github.com/akshatDE/AgenticAILearning.git
+cd AgenticAILearning/pure-python-local-agent
 ```
 
 Install the dependencies:
 
 ```bash
-uv add openai streamlit requests python-dotenv
+pip install -r requirements.txt
 ```
 
-Install and start Ollama, then download the local model:
+### For the local backend (Ollama)
 
 ```bash
 ollama pull qwen3.5:9b
 ```
 
-Run the model:
-
 ```bash
 ollama serve
 ```
+
+### For the cloud backend (Groq)
+
+Create a `.env` file in the project folder:
+
+```text
+GROQ_API_KEY=your_groq_api_key
+```
+
+`.env` is git-ignored, so the key stays on your machine. On Streamlit Cloud the same value goes in **Manage app → Settings → Secrets**.
 
 ---
 
 ## Run the Terminal Agent
 
 ```bash
-uv run python agent.py
+python agent.py
 ```
 
 ---
@@ -162,10 +167,10 @@ uv run python agent.py
 ## Run the Streamlit App
 
 ```bash
-uv run streamlit run streamlit_app.py
+streamlit run app.py
 ```
 
-Open the local Streamlit URL shown in the terminal.
+Open the local URL shown in the terminal.
 
 ---
 
@@ -187,15 +192,13 @@ Convert 100 USD to INR.
 Convert 500 USD to INR and divide the result by 4.
 ```
 
-The last example may require multiple tool calls.
+The last example needs two tool calls, so it shows the loop running more than once.
 
 ---
 
 ## Core Components
 
-The project contains five main parts:
-
-1. **Brain** — Qwen3.5 9B running locally
+1. **Brain** — Qwen3.5 9B locally, or GPT-OSS 120B on Groq
 2. **Tools** — Python functions that perform actions
 3. **Tool schemas** — descriptions of tools provided to the model
 4. **Memory** — the conversation and tool results stored in a message list
@@ -231,15 +234,25 @@ The model is not only generating text. It is deciding which actions should be pe
 
 ---
 
+## One Thing Worth Knowing
+
+Ollama and Groq do not speak quite the same dialect, and the loop has to handle both:
+
+- Ollama returns tool arguments as a **dict**; Groq returns them as a **JSON string**, so they need parsing before the call.
+- Ollama accepts a `tool_name` key on tool results; Groq rejects it and requires `tool_call_id` instead.
+
+Small differences, but they are exactly the kind of thing a framework would paper over — and worth seeing once.
+
+---
+
 ## Current Limitations
 
-- Weather data is static
-- Conversation memory is not persistent
+- `calculator` uses raw `eval()`, which is unsafe for untrusted input
+- Conversation memory is not persistent — it resets when the app restarts
 - Tool execution is synchronous
-- Tool arguments need stronger validation
-- The calculator uses a restricted version of `eval()`
+- Tool arguments are not validated beyond the schema
 - No logging, retry handling, or token tracking
-- Tool-calling quality depends on the local model
+- Tool-calling quality depends on the model chosen
 
 ---
 
@@ -247,23 +260,25 @@ The model is not only generating text. It is deciding which actions should be pe
 
 - Add Pydantic tool validation
 - Replace `eval()` with a safe expression parser
+- Move the WeatherAPI key into `.env` alongside the Groq key
 - Add SQLite or PostgreSQL conversation memory
 - Add logging and tool execution tracking
 - Add file-reading and SQL tools
 - Build a Data Engineering agent
-- Add code review and pipeline validation tools
 
 ---
 
 ## Learning Objective
 
-This project is designed to understand what agent frameworks do internally:
+This project exists to understand what agent frameworks do internally:
 
 ```text
-Local Model + Tools + Memory + Agent Loop
+Model + Tools + Memory + Agent Loop
 ```
 
-The focus is not on building the most advanced agent. The focus is on learning the core mechanics using simple Python code and a locally running model.
+The focus is not on building the most advanced agent. The focus is on learning the core mechanics using simple Python code.
+
+---
 
 ## Author
 
