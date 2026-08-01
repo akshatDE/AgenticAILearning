@@ -77,6 +77,7 @@ Both are plain `requests` calls — `ask_ai()` for Ollama and `ask_groq()` for G
 | `get_weather` | Current weather for a city (WeatherAPI) |
 | `calculator` | Evaluates an arithmetic expression |
 | `convert_currency` | Live exchange rates (Frankfurter API) |
+| `search_internet` | Web search (Brave Search API) |
 
 Tools are ordinary Python functions:
 
@@ -150,7 +151,10 @@ Create a `.env` file in the project folder:
 
 ```text
 GROQ_API_KEY=your_groq_api_key
+BRAVE_API_KEY=your_brave_search_api_key
 ```
+
+`BRAVE_API_KEY` powers the `search_internet` tool. A free key is available from the [Brave Search API dashboard](https://api-dashboard.search.brave.com/). The other tools work without it.
 
 `.env` is git-ignored, so the key stays on your machine. On Streamlit Cloud the same value goes in **Manage app → Settings → Secrets**.
 
