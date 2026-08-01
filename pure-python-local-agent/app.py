@@ -16,7 +16,7 @@ import streamlit as st
 # on Streamlit Cloud there is no .env, so take the key from st.secrets and put
 # it in the environment before agent.py reads it
 try:
-    for secret_name in ("GROQ_API_KEY", "BRAVE_API_KEY"):
+    for secret_name in ("GROQ_API_KEY", "TAVILY_API_KEY"):
         if secret_name in st.secrets and not os.environ.get(secret_name):
             os.environ[secret_name] = st.secrets[secret_name]
 except Exception:
@@ -243,7 +243,7 @@ TOOLS_UI = [
     ("🌤️", "get_weather", "live weather for any city"),
     ("🧮", "calculator", "arithmetic expressions"),
     ("💱", "convert_currency", "live FX rates"),
-    ("🔎", "search_internet", "web search via Brave"),
+    ("🔎", "search_internet", "web search via Tavily"),
 ]
 
 EXAMPLES = [

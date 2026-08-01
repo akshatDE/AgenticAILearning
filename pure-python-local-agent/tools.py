@@ -1,5 +1,4 @@
 import os
-import re
 from urllib import response
 import requests
 
@@ -47,39 +46,38 @@ def convert_currency(amount: float, from_currency: str, to_currency: str) -> str
         return f"No rate available for {from_currency} -> {to_currency}"
 
 def search_internet(query: str, count: int = 5) -> str:
-    """Search the web using the Brave Search API.
+    """Search the web using the Tavily Search API.
 
-    Send the query to Brave and return the top results as a numbered list
-    of titles, descriptions and links. The API key is read from the
-    BRAVE_API_KEY environment variable. If the request fails, an error
+    Send the query to Tavily and return the top results as a numbered list
+    of titles, snippets and links. The API key is read from the
+    TAVILY_API_KEY environment variable. If the request fails, an error
     message is returned instead.
     """
     try:
-        response = requests.get(
-            "https://api.search.brave.com/res/v1/web/search",
+        response = requests.post(
+            "https://api.tavily.com/search",
             headers={
-                "Accept": "application/json",
-                "X-Subscription-Token": os.environ.get("BRAVE_API_KEY", ""),
+                "Authorization": f"Bearer {os.environ.get('TAVILY_API_KEY', '')}",
             },
-            params={"q": query, "count": count},
-            timeout=10,
+            json={"query": query, "max_results": count},
+            timeout=15,
         )
         response.raise_for_status()
-        results = response.json()["web"]["results"]
+        results = response.json()["results"]
 
         if not results:
             return f"No search results found for {query}"
 
         return "\n\n".join(
             f"{position}. {item['title']}\n"
-            f"{re.sub('<[^>]+>', '', item.get('description', ''))}\n"
+            f"{item.get('content', '')}\n"
             f"{item['url']}"
             for position, item in enumerate(results, start=1)
         )
     except requests.exceptions.RequestException as exc:
         return f"Search service unavailable: {exc}"
     except KeyError:
-        return f"No search results available for {query}"
+        return f"Search returned an unexpected response for {query}"
 
 def calculator(expression: str) -> str:
     """Evaluate a mathematical expression and return the result.
