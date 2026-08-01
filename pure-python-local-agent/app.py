@@ -250,6 +250,7 @@ EXAMPLES = [
     "What's the weather in Berlin right now?",
     "Convert 250 USD to INR",
     "What is (145 * 32) + 78?",
+    "Who won the 2026 FIFA World Cup?",
 ]
 
 
