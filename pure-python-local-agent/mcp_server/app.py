@@ -1,16 +1,24 @@
 import asyncio
 import json
 from pprint import pprint
+from pathlib import Path
 
 import requests
 from fastmcp import Client
+from fastmcp.client.transports import PythonStdioTransport
 
 
 # ---------------------------------------------------------
 # MCP CLIENT
 # ---------------------------------------------------------
 
-client = Client("server.py")
+SERVER_PATH = Path(__file__).parent / "server.py"
+
+client = Client(
+    PythonStdioTransport(
+        script_path=str(SERVER_PATH)
+    )
+)
 
 
 # ---------------------------------------------------------
