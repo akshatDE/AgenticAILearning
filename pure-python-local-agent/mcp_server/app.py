@@ -1,137 +1,135 @@
+"""
+AgenticGPT agent loop.
+
+Spawns server.py as an MCP stdio subprocess, discovers its tools, hands them
+to a local Ollama model, and runs the tool-calling loop until the model
+answers without requesting another tool.
+
+Everything printed here is the trace the Streamlit frontend captures.
+
+Run standalone with:  python app.py
+"""
+
+from __future__ import annotations
+
 import asyncio
 import json
-from pprint import pprint
 from pathlib import Path
+from pprint import pprint
 
 import requests
 from fastmcp import Client
 from fastmcp.client.transports import PythonStdioTransport
 
-
-# ---------------------------------------------------------
-# MCP CLIENT
-# ---------------------------------------------------------
+OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
+DEFAULT_MODEL = "qwen3:8b"
+REQUEST_TIMEOUT = 120  # local models on CPU are slow; 60s times out mid-answer
 
 SERVER_PATH = Path(__file__).parent / "server.py"
 
-client = Client(
-    PythonStdioTransport(
-        script_path=str(SERVER_PATH)
-    )
-)
 
+def make_client() -> Client:
+    """Build a fresh MCP client.
 
-# ---------------------------------------------------------
-# MCP TOOLS -> OLLAMA TOOL FORMAT
-# ---------------------------------------------------------
-
-def convert_mcp_tools_to_ollama(mcp_tools):
+    Deliberately not a module-level singleton. Streamlit calls asyncio.run()
+    once per message, which creates a new event loop each time, and a client
+    holds subprocess pipes bound to the loop that opened them. Reusing one
+    across loops works for the first message and fails on the second.
     """
-    Convert tools discovered from the MCP server into the
-    tool schema expected by Ollama.
-    """
-
-    ollama_tools = []
-
-    for tool in mcp_tools:
-        ollama_tools.append(
-            {
-                "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description or "",
-                    "parameters": tool.inputSchema,
-                },
-            }
-        )
-
-    return ollama_tools
+    return Client(PythonStdioTransport(script_path=str(SERVER_PATH)))
 
 
-# ---------------------------------------------------------
+# ---------------------------------------------------------------------------
+# MCP tool schema -> Ollama tool schema
+# ---------------------------------------------------------------------------
+def convert_mcp_tools_to_ollama(mcp_tools) -> list[dict]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description or "",
+                "parameters": tool.inputSchema,
+            },
+        }
+        for tool in mcp_tools
+    ]
+
+
+# ---------------------------------------------------------------------------
 # LLM
-# ---------------------------------------------------------
-
-def ask_ai(messages: list, tools: list,model: str = "qwen3.5:9b") -> dict:
-    """
-    Send messages and available MCP tools to the local Ollama model.
-    """
+# ---------------------------------------------------------------------------
+def ask_ai(messages: list, tools: list, model: str = DEFAULT_MODEL) -> dict:
+    """Send the conversation and the available tools to Ollama."""
+    payload = {
+        "model": model,
+        "messages": messages,
+        "tools": tools,
+        "think": False,
+        "stream": False,
+    }
 
     try:
-        url = "http://localhost:11434/api/chat"
-
-        payload = {
-            "model": model,
-            "messages": messages,
-            "tools": tools,
-            "think": False,
-            "stream": False,
-        }
-
-        response = requests.post(
-            url,
-            json=payload,
-            timeout=60,
-        )
-
+        response = requests.post(OLLAMA_CHAT_URL, json=payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
-
         return response.json()["message"]
-
-    except requests.RequestException as exc:
+    except requests.HTTPError as exc:
+        detail = ""
+        try:
+            detail = exc.response.json().get("error", "")
+        except Exception:
+            detail = exc.response.text[:200] if exc.response is not None else ""
         return {
             "role": "assistant",
-            "content": f"LLM request failed: {exc}",
+            "content": f"Ollama rejected the request: {detail or exc}",
         }
+    except requests.RequestException as exc:
+        return {"role": "assistant", "content": f"Could not reach Ollama: {exc}"}
+    except (KeyError, ValueError):
+        return {"role": "assistant", "content": "Ollama returned an unexpected response."}
 
 
-# ---------------------------------------------------------
-# AGENT LOOP
-# ---------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Tool results
+# ---------------------------------------------------------------------------
+def result_to_text(result) -> str:
+    """Flatten an MCP tool result into text the model can read.
 
+    FastMCP 2.x returns a CallToolResult with .content; older versions
+    returned the content list directly.
+    """
+    blocks = getattr(result, "content", result)
+    if blocks is None:
+        return ""
+    return "\n".join(block.text for block in blocks if hasattr(block, "text"))
+
+
+# ---------------------------------------------------------------------------
+# Agent loop
+# ---------------------------------------------------------------------------
 async def run_agent(
     user_message: str,
     max_turns: int = 5,
+    model: str = DEFAULT_MODEL,
 ) -> str:
+    messages = [{"role": "user", "content": user_message}]
 
-    messages = [
-        {
-            "role": "user",
-            "content": user_message,
-        }
-    ]
+    async with make_client() as client:
 
-    # Connect to MCP server
-    async with client:
-
-        # ---------------------------------------------
-        # 1. Discover tools from MCP server
-        # ---------------------------------------------
-
+        # 1. Discover what the server offers.
         mcp_tools = await client.list_tools()
 
         print("\nMCP tools discovered:")
-
         for tool in mcp_tools:
             print(f"- {tool.name}")
 
-        # ---------------------------------------------
-        # 2. Convert them for Ollama
-        # ---------------------------------------------
-
+        # 2. Translate for Ollama.
         llm_tools = convert_mcp_tools_to_ollama(mcp_tools)
 
-        # ---------------------------------------------
-        # 3. Agent loop
-        # ---------------------------------------------
-
+        # 3. Loop until the model answers without asking for a tool.
         for turn in range(max_turns):
 
-            response = ask_ai(
-                messages,
-                llm_tools,
-            )
-
+            response = ask_ai(messages, llm_tools, model=model)
             messages.append(response)
 
             print(f"\nAI response — turn {turn + 1}:")
@@ -139,82 +137,57 @@ async def run_agent(
 
             tool_calls = response.get("tool_calls")
 
-            # -----------------------------------------
-            # No tool requested -> final answer
-            # -----------------------------------------
-
             if not tool_calls:
                 return response.get("content", "")
 
-            # -----------------------------------------
-            # LLM requested one or more tools
-            # -----------------------------------------
-
             for tool_call in tool_calls:
-
                 function = tool_call["function"]
-
                 tool_name = function["name"]
                 arguments = function["arguments"]
 
                 if isinstance(arguments, str):
-                    arguments = json.loads(arguments)
+                    try:
+                        arguments = json.loads(arguments)
+                    except json.JSONDecodeError:
+                        arguments = {}
 
                 print(f"\nTool requested: {tool_name}")
                 print("Arguments:")
                 pprint(arguments)
 
-                # -------------------------------------
-                # 4. MCP executes the tool
-                # -------------------------------------
-
-                result = await client.call_tool(
-                    tool_name,
-                    arguments,
-                )
+                # 4. MCP runs the tool.
+                try:
+                    result = await client.call_tool(tool_name, arguments)
+                    result_text = result_to_text(result)
+                except Exception as exc:
+                    result_text = f"Tool failed: {type(exc).__name__}: {exc}"
 
                 print("MCP result:")
-                pprint(result)
+                pprint(result_text)
 
-                # FastMCP returns MCP content objects.
-                # Convert their text into something
-                # Ollama can receive.
-                result_text = "\n".join(
-                    content.text
-                    for content in result.content
-                    if hasattr(content, "text")
-                )
-
-                # -------------------------------------
-                # 5. Give tool result back to LLM
-                # -------------------------------------
-
+                # 5. Hand the result back to the model.
                 messages.append(
                     {
                         "role": "tool",
-                        "tool_call_id": tool_call.get(
-                            "id",
-                            tool_name,
-                        ),
+                        "tool_call_id": tool_call.get("id", tool_name),
                         "content": result_text,
                     }
                 )
 
-    return "Agent stopped because it reached the maximum number of turns."
+    return (
+        f"Stopped after {max_turns} turns without reaching an answer. "
+        "Try a narrower question."
+    )
 
 
-# ---------------------------------------------------------
-# APPLICATION ENTRY POINT
-# ---------------------------------------------------------
-
-async def main():
-
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
+async def main() -> None:
     user_message = input("You: ")
-
-    response = await run_agent(user_message)
-
+    answer = await run_agent(user_message)
     print("\nAgent:")
-    print(response)
+    print(answer)
 
 
 if __name__ == "__main__":

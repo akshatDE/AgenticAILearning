@@ -16,6 +16,7 @@ import html
 import inspect
 import io
 import os
+import random
 import time
 from contextlib import redirect_stdout
 
@@ -37,6 +38,10 @@ from mcp_server.app import run_agent  # noqa: E402
 OLLAMA_URL = "http://localhost:11434"
 DEFAULT_MODEL = "qwen3:8b"
 STREAM_DELAY = 0.012  # seconds per token when replaying the answer
+
+# The background mark is part of the home screen. Set to True to keep it
+# behind the conversation as well.
+WATERMARK_ALWAYS = False
 
 st.set_page_config(
     page_title="AgenticGPT",
@@ -69,6 +74,30 @@ st.markdown(
       max-width: 46rem;
       padding-top: 2.2rem;
       padding-bottom: 7rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ---------- background mark ---------- */
+    .watermark {
+      position: fixed; inset: 0; z-index: 0;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap: 1.15rem; pointer-events:none; user-select:none;
+    }
+    [data-testid="stSidebar"][aria-expanded="true"] ~ div .watermark { left: 21rem; }
+    .watermark .wm-mark {
+      width:132px; height:132px; border-radius:50%;
+      background:var(--accent); color:#fff;
+      display:flex; align-items:center; justify-content:center;
+      font-size:62px; font-weight:700; opacity:.13;
+    }
+    .watermark .wm-name {
+      font-size:3.1rem; font-weight:700; letter-spacing:-.02em;
+      color:var(--fg); opacity:.07;
+    }
+    .watermark .wm-stack {
+      font-size:.95rem; font-weight:500; letter-spacing:.16em;
+      text-transform:uppercase; color:var(--fg); opacity:.05;
     }
 
     /* ---------- sidebar ---------- */
@@ -170,6 +199,9 @@ st.markdown(
     @media (max-width: 640px) {
       .greeting { margin-top:12vh; font-size:1.45rem; }
       .user-bubble { max-width:88%; }
+      .watermark .wm-mark { width:88px; height:88px; font-size:42px; }
+      .watermark .wm-name { font-size:2rem; }
+      .watermark .wm-stack { font-size:.75rem; }
     }
     </style>
     """,
@@ -183,12 +215,26 @@ TOOLS_UI = [
     ("🔎", "search_internet", "web search via Tavily"),
 ]
 
-EXAMPLES = [
+# Every suggestion maps to a tool the MCP server actually exposes, so the
+# home screen doubles as a demonstration of what the agent can reach.
+SUGGESTION_POOL = [
     "What's the weather in Berlin right now?",
+    "Is it warmer in Lisbon or Athens today?",
     "Convert 250 USD to INR",
+    "How much is 1,200 euros in Japanese yen?",
     "What is (145 * 32) + 78?",
+    "Work out 15% of 4,320",
     "Search for the latest AI news",
+    "Find recent coverage of the Model Context Protocol",
 ]
+
+WATERMARK = """
+<div class="watermark" aria-hidden="true">
+  <div class="wm-mark">A</div>
+  <div class="wm-name">AgenticGPT</div>
+  <div class="wm-stack">Ollama · Qwen · MCP</div>
+</div>
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +328,7 @@ with st.sidebar:
 
     if st.button("New chat", use_container_width=True):
         st.session_state.chat = []
+        st.session_state.pop("suggestions", None)
         st.rerun()
 
     st.divider()
@@ -323,20 +370,33 @@ st.session_state.setdefault("chat", [])
 # ---------------------------------------------------------------------------
 # Empty state
 # ---------------------------------------------------------------------------
-if not st.session_state.chat:
+home = not st.session_state.chat
+
+if home or WATERMARK_ALWAYS:
+    st.markdown(WATERMARK, unsafe_allow_html=True)
+
+if home:
     st.markdown('<div class="greeting">What can I help with?</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="subgreeting">Runs locally on Ollama. Tools execute through MCP.</div>',
         unsafe_allow_html=True,
     )
 
-    rows = [EXAMPLES[:2], EXAMPLES[2:]]
-    for row in rows:
+    # Sampled once per session so the grid stays put across reruns.
+    if "suggestions" not in st.session_state:
+        st.session_state.suggestions = random.sample(SUGGESTION_POOL, 4)
+
+    picks = st.session_state.suggestions
+    for row in (picks[:2], picks[2:]):
         cols = st.columns(2, gap="small")
         for col, example in zip(cols, row):
             if col.button(example, use_container_width=True, key=f"ex_{example}"):
                 st.session_state.chat.append({"role": "user", "content": example})
                 st.rerun()
+
+    if st.button("Show other suggestions", key="reshuffle"):
+        st.session_state.suggestions = random.sample(SUGGESTION_POOL, 4)
+        st.rerun()
 
 # ---------------------------------------------------------------------------
 # History
