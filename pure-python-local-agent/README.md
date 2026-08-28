@@ -20,7 +20,7 @@ The goal is to understand how an agent works internally before reaching for a fr
 
 ## Architecture
 
-![AgenticGPT architecture](agenticgpt_architecture.svg)
+![AgenticGPT architecture](![alt text](mcp_integrated_arch.png))
 
 The dashed boundary matters: Streamlit, the agent loop, and the MCP client all share one Python process. `server.py` is a **separate subprocess**, spawned over stdio, and the tools run inside it. The frontend never imports a tool function — it never even knows their names until the server reports them.
 
