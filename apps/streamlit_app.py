@@ -1,42 +1,54 @@
 """
-AgenticGPT — ChatGPT-style Streamlit frontend for the MCP-powered agent.
+AgenticGPT — ChatGPT-style Streamlit frontend.
 
-    Streamlit  ->  run_agent()  ->  Ollama (Qwen)
-                        |
-                        +-------->  MCP client -> server.py -> tools
+An interface, nothing more. Every line of agent reasoning and MCP plumbing
+lives in the `agenticgpt` package; this file renders chat, collects a trace,
+and calls one function:
 
-run_agent() prints its MCP discovery / tool-calling trace to stdout.
-That stdout is captured per turn and shown in a collapsed "Agent trace".
+    Streamlit  →  agenticgpt.run_agent()  →  AgentLoop  →  MCPManager  →  MCP servers
+
+If agent logic ever starts appearing in this file, it belongs in
+`src/agenticgpt/` instead.
+
+Run with:  streamlit run apps/streamlit_app.py
 """
 
 from __future__ import annotations
 
 import asyncio
 import html
-import inspect
-import io
 import os
 import random
+import sys
 import time
-from contextlib import redirect_stdout
+from pathlib import Path
 
 import requests
 import streamlit as st
 
+# Running from a source checkout without `pip install -e .`, src/ is not on
+# sys.path. A no-op once the package is installed.
+_SRC = Path(__file__).resolve().parents[1] / "src"
+if _SRC.is_dir() and str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
+import agenticgpt  # noqa: E402
+from agenticgpt import DEFAULT_MODEL, discover_tools, load_environment, run_agent  # noqa: E402
+
 # ---------------------------------------------------------------------------
 # Secrets -> environment, so the spawned MCP server subprocess inherits them.
+# On Streamlit Cloud there is no .env; the keys come from st.secrets instead.
 # ---------------------------------------------------------------------------
-for _name in ("TAVILY_API_KEY", "WEATHER_API_KEY"):
+load_environment()
+
+for _name in ("TAVILY_API_KEY", "WEATHER_API_KEY", "GROQ_API_KEY"):
     try:
         if _name in st.secrets and not os.environ.get(_name):
             os.environ[_name] = st.secrets[_name]
     except Exception:
         pass
 
-from mcp_server.app import run_agent  # noqa: E402
-
 OLLAMA_URL = "http://localhost:11434"
-DEFAULT_MODEL = "qwen3:8b"
 STREAM_DELAY = 0.012  # seconds per token when replaying the answer
 
 # The background mark is part of the home screen. Set to True to keep it
@@ -208,12 +220,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-TOOLS_UI = [
-    ("🌤️", "get_weather", "current conditions for a city"),
-    ("💱", "convert_currency", "live FX rates"),
-    ("🧮", "calculator", "arithmetic expressions"),
-    ("🔎", "search_internet", "web search via Tavily"),
-]
+TOOL_ICONS = {
+    "get_weather": "🌤️",
+    "convert_currency": "💱",
+    "calculator": "🧮",
+    "search_internet": "🔎",
+}
 
 # Every suggestion maps to a tool the MCP server actually exposes, so the
 # home screen doubles as a demonstration of what the agent can reach.
@@ -238,7 +250,7 @@ WATERMARK = """
 
 
 # ---------------------------------------------------------------------------
-# Backend helpers
+# Backend helpers — each one call into the package, no logic of its own
 # ---------------------------------------------------------------------------
 @st.cache_data(ttl=10, show_spinner=False)
 def ollama_models() -> tuple[bool, list[str]]:
@@ -251,20 +263,25 @@ def ollama_models() -> tuple[bool, list[str]]:
         return False, []
 
 
-_ACCEPTS_MODEL = "model" in inspect.signature(run_agent).parameters
-
-
-def run_agent_with_trace(prompt: str, model: str) -> tuple[str, str, float]:
-    """Run the async agent from sync Streamlit, capturing its stdout trace."""
-    buffer = io.StringIO()
-    start = time.perf_counter()
-    kwargs = {"model": model} if _ACCEPTS_MODEL else {}
+@st.cache_data(ttl=60, show_spinner=False)
+def available_tools() -> list[tuple[str, str]]:
+    """Ask the MCP servers what they offer. Discovered, never hardcoded."""
     try:
-        with redirect_stdout(buffer):
-            answer = asyncio.run(run_agent(prompt, **kwargs))
+        specs = asyncio.run(discover_tools())
+    except Exception:
+        return []
+    return [(spec.name, spec.description.strip().split("\n")[0]) for spec in specs]
+
+
+def answer_with_trace(prompt: str, model: str) -> tuple[str, str, float]:
+    """Run the agent and collect the step-by-step trace it emits."""
+    steps: list[str] = []
+    start = time.perf_counter()
+    try:
+        answer = asyncio.run(run_agent(prompt, model=model, on_event=steps.append))
     except Exception as exc:
         answer = f"The agent stopped before answering.\n\n`{type(exc).__name__}: {exc}`"
-    return answer, buffer.getvalue(), time.perf_counter() - start
+    return answer, "\n".join(steps), time.perf_counter() - start
 
 
 def stream_tokens(text: str):
@@ -324,7 +341,7 @@ with st.sidebar:
         '<div class="brand"><span class="mark">A</span>AgenticGPT</div>',
         unsafe_allow_html=True,
     )
-    st.caption("Local agent over MCP tools")
+    st.caption(f"Local agent over MCP tools · v{agenticgpt.__version__}")
 
     if st.button("New chat", use_container_width=True):
         st.session_state.chat = []
@@ -349,18 +366,22 @@ with st.sidebar:
     else:
         default_index = installed.index(DEFAULT_MODEL) if DEFAULT_MODEL in installed else 0
         model = st.selectbox("Model", installed, index=default_index, label_visibility="collapsed")
-        if not _ACCEPTS_MODEL:
-            st.caption("Picker is display-only until `run_agent` accepts a `model` argument.")
 
     st.divider()
 
     st.markdown('<div class="side-label">Tools</div>', unsafe_allow_html=True)
-    for icon, name, desc in TOOLS_UI:
-        st.markdown(
-            f'<div class="tool">{icon}<b>{name}</b><span class="desc">{desc}</span></div>',
-            unsafe_allow_html=True,
-        )
-    st.caption("Discovered from the MCP server at run time.")
+    tools = available_tools()
+    if tools:
+        for name, description in tools:
+            icon = TOOL_ICONS.get(name, "🔧")
+            st.markdown(
+                f'<div class="tool">{icon}<b>{name}</b>'
+                f'<span class="desc">{html.escape(description)}</span></div>',
+                unsafe_allow_html=True,
+            )
+        st.caption("Discovered from the MCP server at run time.")
+    else:
+        st.caption("No MCP server reachable — tools could not be discovered.")
 
 # ---------------------------------------------------------------------------
 # State
@@ -423,7 +444,7 @@ if st.session_state.chat and st.session_state.chat[-1]["role"] == "user":
     body = assistant_shell()
     with body:
         with st.spinner("Working through it…"):
-            answer, trace, elapsed = run_agent_with_trace(pending, model)
+            answer, trace, elapsed = answer_with_trace(pending, model)
         st.write_stream(stream_tokens(answer))
 
     render_meta(trace, elapsed, answer, "live")

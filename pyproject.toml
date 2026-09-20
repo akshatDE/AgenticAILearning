@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agenticgpt"
+version = "0.3.0"
+description = "A tool-calling AI agent in pure Python, with tools served over MCP"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Akshat Sharma" }]
+keywords = ["agent", "mcp", "llm", "ollama", "pure-python"]
+
+# The core runtime is pure Python plus HTTP. fastmcp is here because MCP is
+# the protocol being studied, not because it provides an agent framework.
+dependencies = [
+    "requests>=2.32.0",
+    "fastmcp>=2.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+ui = ["streamlit>=1.58.0"]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+agenticgpt = "agenticgpt:main"
+
+[project.urls]
+Repository = "https://github.com/akshatDE/AgenticAILearning"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,7 +1,9 @@
 import asyncio
+from pathlib import Path
+
 from fastmcp import Client
 
-client = Client("server.py")
+client = Client(str(Path(__file__).parent / "server.py"))
 
 
 async def main():

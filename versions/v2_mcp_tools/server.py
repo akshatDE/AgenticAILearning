@@ -64,7 +64,7 @@ def get_weather(city: str) -> dict:
     Returns the location name, a description of conditions, and the
     temperature in Celsius.
     """
-    api_key = "e3897ae36fa745dd94c34330263007"
+    api_key = os.environ.get("WEATHER_API_KEY", "")
     if not api_key:
         return {"error": "WEATHER_API_KEY is not set in the environment."}
 

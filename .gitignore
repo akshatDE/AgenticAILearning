@@ -1,0 +1,27 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Secrets — never commit these
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Editor / assistant scratch
+.claude/
+.agents/
+.DS_Store
+
+# Exploratory notebooks kept locally, not part of the repo
+testing/
+.pytest_cache/

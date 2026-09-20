@@ -1,0 +1,5 @@
+# Version 1 — direct tool calling. Kept separate so this archived version
+# stays reproducible on its own.
+streamlit>=1.58.0
+requests>=2.32.0
+python-dotenv>=1.0.0
