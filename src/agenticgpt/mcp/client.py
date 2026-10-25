@@ -40,7 +40,7 @@ def result_to_text(result: Any) -> str:
 def _build_transport(config: MCPServerConfig):
     """Turn a config entry into something FastMCP can connect through."""
     if config.transport == "stdio":
-        env = {**os.environ, **config.env} if config.env else None
+        env = {**os.environ, **config.env}
         return PythonStdioTransport(script_path=str(config.script_path), env=env)
     # http — FastMCP infers the transport from the URL.
     return config.url

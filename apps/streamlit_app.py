@@ -33,7 +33,13 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 import agenticgpt  # noqa: E402
-from agenticgpt import DEFAULT_MODEL, discover_tools, load_environment, run_agent  # noqa: E402
+from agenticgpt import (  # noqa: E402
+    DEFAULT_MODEL,
+    GroqClient,
+    discover_tools,
+    load_environment,
+    run_agent,
+)
 
 # ---------------------------------------------------------------------------
 # Secrets -> environment, so the spawned MCP server subprocess inherits them.
@@ -49,6 +55,11 @@ for _name in ("TAVILY_API_KEY", "WEATHER_API_KEY", "GROQ_API_KEY"):
         pass
 
 OLLAMA_URL = "http://localhost:11434"
+GROQ_MODELS = [
+    GroqClient.DEFAULT_MODEL,
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.8-27b",
+]
 STREAM_DELAY = 0.012  # seconds per token when replaying the answer
 
 # The background mark is part of the home screen. Set to True to keep it
@@ -273,12 +284,17 @@ def available_tools() -> list[tuple[str, str]]:
     return [(spec.name, spec.description.strip().split("\n")[0]) for spec in specs]
 
 
-def answer_with_trace(prompt: str, model: str) -> tuple[str, str, float]:
+def answer_with_trace(
+    prompt: str, model: str, provider: str = "Ollama"
+) -> tuple[str, str, float]:
     """Run the agent and collect the step-by-step trace it emits."""
     steps: list[str] = []
     start = time.perf_counter()
     try:
-        answer = asyncio.run(run_agent(prompt, model=model, on_event=steps.append))
+        llm = GroqClient(model=model) if provider == "Groq" else None
+        answer = asyncio.run(
+            run_agent(prompt, model=model, llm=llm, on_event=steps.append)
+        )
     except Exception as exc:
         answer = f"The agent stopped before answering.\n\n`{type(exc).__name__}: {exc}`"
     return answer, "\n".join(steps), time.perf_counter() - start
@@ -351,21 +367,40 @@ with st.sidebar:
     st.divider()
 
     st.markdown('<div class="side-label">Model</div>', unsafe_allow_html=True)
-    st.markdown(
-        f'<span class="pill"><span class="dot {"ok" if online else "bad"}"></span>'
-        f'Ollama {"connected" if online else "not running"}</span>',
-        unsafe_allow_html=True,
+    groq_ready = bool(os.environ.get("GROQ_API_KEY"))
+    provider = st.radio(
+        "Provider",
+        ["Ollama", "Groq"],
+        horizontal=True,
+        label_visibility="collapsed",
     )
 
-    if not online:
-        st.error("Start Ollama with `ollama serve`, then reload.")
-        model = DEFAULT_MODEL
-    elif not installed:
-        st.warning("No models installed. Pull one with `ollama pull qwen3:8b`.")
-        model = DEFAULT_MODEL
+    if provider == "Groq" and not groq_ready:
+        st.error("`GROQ_API_KEY` is not set in `.env`. Add it and restart.")
+        provider = "Ollama"
+
+    if provider == "Groq":
+        st.markdown(
+            '<span class="pill"><span class="dot ok"></span>Groq key found</span>',
+            unsafe_allow_html=True,
+        )
+        model = st.selectbox("Model", GROQ_MODELS, label_visibility="collapsed")
     else:
-        default_index = installed.index(DEFAULT_MODEL) if DEFAULT_MODEL in installed else 0
-        model = st.selectbox("Model", installed, index=default_index, label_visibility="collapsed")
+        st.markdown(
+            f'<span class="pill"><span class="dot {"ok" if online else "bad"}"></span>'
+            f'Ollama {"connected" if online else "not running"}</span>',
+            unsafe_allow_html=True,
+        )
+
+        if not online:
+            st.error("Start Ollama with `ollama serve`, then reload.")
+            model = DEFAULT_MODEL
+        elif not installed:
+            st.warning("No models installed. Pull one with `ollama pull qwen3:8b`.")
+            model = DEFAULT_MODEL
+        else:
+            default_index = installed.index(DEFAULT_MODEL) if DEFAULT_MODEL in installed else 0
+            model = st.selectbox("Model", installed, index=default_index, label_visibility="collapsed")
 
     st.divider()
 
@@ -399,7 +434,7 @@ if home or WATERMARK_ALWAYS:
 if home:
     st.markdown('<div class="greeting">What can I help with?</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="subgreeting">Runs locally on Ollama. Tools execute through MCP.</div>',
+        '<div class="subgreeting">Runs on Ollama or Groq. Tools execute through MCP.</div>',
         unsafe_allow_html=True,
     )
 
@@ -444,7 +479,7 @@ if st.session_state.chat and st.session_state.chat[-1]["role"] == "user":
     body = assistant_shell()
     with body:
         with st.spinner("Working through it…"):
-            answer, trace, elapsed = answer_with_trace(pending, model)
+            answer, trace, elapsed = answer_with_trace(pending, model, provider)
         st.write_stream(stream_tokens(answer))
 
     render_meta(trace, elapsed, answer, "live")

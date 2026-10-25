@@ -86,15 +86,17 @@ def load_environment(dotenv_path: str | Path | None = None) -> None:
     Streamlit Cloud.
     """
     try:
-        from dotenv import load_dotenv
+        from dotenv import dotenv_values
     except ImportError:
         return
 
     path = Path(dotenv_path) if dotenv_path else REPO_ROOT / ".env"
-    if path.exists():
-        load_dotenv(path, override=False)
-    else:
-        load_dotenv(override=False)
+    if not path.exists():
+        return
+
+    for name, value in dotenv_values(path).items():
+        if value is not None and not os.environ.get(name):
+            os.environ[name] = value
 
 
 async def run_agent(
