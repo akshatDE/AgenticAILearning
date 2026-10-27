@@ -255,7 +255,7 @@ WATERMARK = """
 <div class="watermark" aria-hidden="true">
   <div class="wm-mark">A</div>
   <div class="wm-name">AgenticGPT</div>
-  <div class="wm-stack">Ollama · Qwen · MCP</div>
+  <div class="wm-stack">Ollama · Groq · MCP</div>
 </div>
 """
 
@@ -368,15 +368,21 @@ with st.sidebar:
 
     st.markdown('<div class="side-label">Model</div>', unsafe_allow_html=True)
     groq_ready = bool(os.environ.get("GROQ_API_KEY"))
+    # A hosted deploy has no Ollama, so default to Groq whenever it is the
+    # only backend that can answer.
     provider = st.radio(
         "Provider",
         ["Ollama", "Groq"],
+        index=1 if (groq_ready and not online) else 0,
         horizontal=True,
         label_visibility="collapsed",
     )
 
     if provider == "Groq" and not groq_ready:
-        st.error("`GROQ_API_KEY` is not set in `.env`. Add it and restart.")
+        st.error(
+            "`GROQ_API_KEY` is not set. Add it to `.env` locally, or to "
+            "the app's Secrets on Streamlit Cloud."
+        )
         provider = "Ollama"
 
     if provider == "Groq":

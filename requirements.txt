@@ -1,0 +1,7 @@
+# Used by Streamlit Community Cloud (and `pip install -r requirements.txt`).
+# Installs the agenticgpt package from src/ plus the UI dependencies.
+streamlit>=1.58.0
+requests>=2.32.0
+python-dotenv>=1.0.0
+fastmcp>=2.0.0
+-e .
