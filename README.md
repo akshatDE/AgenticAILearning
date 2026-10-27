@@ -7,7 +7,7 @@ architectural stage is preserved and still runnable, so the progression from
 *hardcoded tools* to *dynamically discovered tools over MCP* can be read as
 code rather than described in prose.
 
-![The learning journey](docs/architecture/learning-journey.png)
+Link:https://agenticailearning-jzetjkymtkh9wkgqvtposs.streamlit.app/
 
 ---
 
