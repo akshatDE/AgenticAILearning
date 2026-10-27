@@ -11,6 +11,9 @@ Adding a provider means adding a class here. The loop does not change.
 from __future__ import annotations
 
 import os
+import threading
+import time
+from collections import deque
 from typing import Any, Protocol, Sequence, runtime_checkable
 
 import requests
@@ -20,6 +23,11 @@ DEFAULT_MODEL = "qwen3:8b"
 
 #: Local models on CPU are slow; 60s times out mid-answer.
 REQUEST_TIMEOUT = 120
+
+#: Groq requests allowed per window. One question can cost several (one per
+#: agent turn), so this caps total spend, not the number of questions.
+GROQ_MAX_REQUESTS = 20
+GROQ_WINDOW_SECONDS = 60
 
 
 @runtime_checkable
@@ -121,15 +129,36 @@ class GroqClient:
     URL = "https://api.groq.com/openai/v1/chat/completions"
     DEFAULT_MODEL = "openai/gpt-oss-120b"
 
+    #: Shared by every instance: Streamlit builds a new client per message, so
+    #: a per-instance counter would reset on each one and limit nothing.
+    _sent: deque[float] = deque()
+    _lock = threading.Lock()
+
     def __init__(
         self,
         model: str | None = None,
         api_key: str | None = None,
         timeout: int = REQUEST_TIMEOUT,
+        max_requests: int = GROQ_MAX_REQUESTS,
+        window_seconds: float = GROQ_WINDOW_SECONDS,
     ) -> None:
         self.model = model or self.DEFAULT_MODEL
         self._api_key = api_key
         self.timeout = timeout
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+
+    def _acquire(self) -> float:
+        """Record a request, or return how many seconds until one is allowed."""
+        now = time.monotonic()
+        with self._lock:
+            sent = GroqClient._sent
+            while sent and now - sent[0] >= self.window_seconds:
+                sent.popleft()
+            if len(sent) >= self.max_requests:
+                return self.window_seconds - (now - sent[0])
+            sent.append(now)
+            return 0.0
 
     @property
     def api_key(self) -> str:
@@ -146,6 +175,16 @@ class GroqClient:
             return {
                 "role": "assistant",
                 "content": "GROQ_API_KEY is not set in the environment.",
+            }
+
+        wait = self._acquire()
+        if wait:
+            return {
+                "role": "assistant",
+                "content": (
+                    f"Groq request limit reached ({self.max_requests} per "
+                    f"{self.window_seconds:g}s). Try again in {wait:.0f}s."
+                ),
             }
 
         payload = {

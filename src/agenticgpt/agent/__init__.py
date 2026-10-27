@@ -9,7 +9,7 @@ uses it; it does not know that tools arrive over MCP, or from where.
 """
 
 from .llm import DEFAULT_MODEL, GroqClient, LLMClient, OllamaClient, tools_to_schemas
-from .loop import DEFAULT_MAX_TURNS, AgentLoop, Toolbox, parse_arguments
+from .loop import DEFAULT_MAX_TURNS, DEFAULT_SYSTEM_PROMPT, AgentLoop, Toolbox, parse_arguments
 from .messages import (
     Conversation,
     Message,
@@ -23,6 +23,7 @@ __all__ = [
     "AgentLoop",
     "Conversation",
     "DEFAULT_MAX_TURNS",
+    "DEFAULT_SYSTEM_PROMPT",
     "DEFAULT_MODEL",
     "GroqClient",
     "LLMClient",

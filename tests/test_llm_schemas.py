@@ -30,3 +30,19 @@ def test_missing_groq_key_is_reported_to_the_model_not_raised(monkeypatch):
     reply = GroqClient().chat([{"role": "user", "content": "hi"}])
 
     assert "GROQ_API_KEY" in reply["content"]
+
+
+def test_groq_stops_calling_after_the_request_limit(monkeypatch):
+    from unittest import mock
+
+    GroqClient._sent.clear()
+    client = GroqClient(api_key="k", max_requests=2, window_seconds=60)
+    ok = mock.Mock()
+    ok.json.return_value = {"choices": [{"message": {"role": "assistant", "content": "ok"}}]}
+
+    with mock.patch("agenticgpt.agent.llm.requests.post", return_value=ok) as post:
+        replies = [client.chat([{"role": "user", "content": "hi"}]) for _ in range(3)]
+
+    GroqClient._sent.clear()
+    assert post.call_count == 2
+    assert "request limit reached" in replies[2]["content"]

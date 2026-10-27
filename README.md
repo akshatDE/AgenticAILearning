@@ -350,10 +350,10 @@ thousand tokens that then travel with every later turn.
 It goes to stderr, so it cannot corrupt the JSON-RPC stream on stdout. Silence
 it with `mcp.run(show_banner=False)`.
 
-**There is no system prompt by default.** The message list starts with the user
-turn. The chat template injects the tool definitions, but the model gets no
-instruction on when to use them. `AgentLoop(system_prompt=...)` now accepts one
-— wiring it up is the cheapest quality win available here.
+**The default system prompt is restrictive.** `DEFAULT_SYSTEM_PROMPT` in
+`agent/loop.py` limits the model to greeting the user and using the provided
+tools; anything else gets a polite refusal. Override it with
+`AgentLoop(system_prompt=...)`, or pass `None` for no system message.
 
 **The calculator will not use `eval()`.** Its expression comes from the model,
 which is influenced by user input and — through `search_internet` — by the

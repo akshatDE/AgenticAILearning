@@ -39,6 +39,7 @@ from typing import Any, Callable, Sequence
 
 from .agent import (
     DEFAULT_MAX_TURNS,
+    DEFAULT_SYSTEM_PROMPT,
     DEFAULT_MODEL,
     AgentLoop,
     Conversation,
@@ -54,6 +55,7 @@ __all__ = [
     "AgentLoop",
     "Conversation",
     "DEFAULT_MAX_TURNS",
+    "DEFAULT_SYSTEM_PROMPT",
     "DEFAULT_MODEL",
     "GroqClient",
     "LLMClient",
@@ -104,7 +106,7 @@ async def run_agent(
     model: str | None = None,
     history: list[dict[str, Any]] | None = None,
     max_turns: int = DEFAULT_MAX_TURNS,
-    system_prompt: str | None = None,
+    system_prompt: str | None = DEFAULT_SYSTEM_PROMPT,
     servers: Sequence[MCPServerConfig] | None = None,
     llm: LLMClient | None = None,
     on_event: Callable[[str], None] | None = None,
